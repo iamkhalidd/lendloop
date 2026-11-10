@@ -1,0 +1,98 @@
+{
+  "id": "LendLoopErrors01",
+  "name": "LendLoop · error handler",
+  "active": false,
+  "nodes": [
+    {
+      "id": "21608587-987a-4eb0-bdfc-467ec29e3dab",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "d9bc775a-6d45-4dc7-b4af-c114401cd7e9",
+      "name": "Sign error report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const crypto = require('crypto');\nfunction sign(method, path, body) {\n  const secret = $env.N8N_TO_CONVEX_SECRET;\n  if (!secret) throw new Error('N8N_TO_CONVEX_SECRET is not set');\n  const ts = String(Math.floor(Date.now() / 1000));\n  const sig = crypto.createHmac('sha256', secret)\n    .update(ts + '.' + method + '.' + path + '.' + body).digest('hex');\n  return { ts, sig, body, url: $env.CONVEX_SITE_URL.replace(/\\/$/, '') + path };\n}\nconst e = $input.first().json;\nconst body = JSON.stringify({\n  executionId: String((e.execution && e.execution.id) || 'trigger-' + Date.now()),\n  workflowName: (e.workflow && e.workflow.name) || 'unknown',\n  // Message only: no stack traces or node input data leave n8n.\n  message: String((e.execution && e.execution.error && e.execution.error.message) ||\n    (e.trigger && e.trigger.error && e.trigger.error.message) || 'unknown error').slice(0, 400),\n});\nreturn [{ json: sign('POST', '/n8n/workflow-error', body) }];"
+      }
+    },
+    {
+      "id": "3fc24224-3c46-4504-9706-6840b7980bb2",
+      "name": "Report to Convex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.sig }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Sign error report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign error report": {
+      "main": [
+        [
+          {
+            "node": "Report to Convex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

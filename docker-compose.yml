@@ -1,0 +1,25 @@
+# Local n8n for the LendLoop automations.
+#   cp .env.example .env   # fill CONVEX_SITE_URL and the two secrets
+#   docker compose up -d
+#   docker compose exec n8n n8n import:workflow --separate --input=/workflows
+# Then open http://localhost:5678, activate the three workflows.
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=UTC
+      - TZ=UTC
+      - WEBHOOK_URL=http://localhost:5678/
+      # The Code nodes compute HMACs with Node's crypto and read secrets from env.
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - CONVEX_SITE_URL=${CONVEX_SITE_URL}
+      - CONVEX_TO_N8N_SECRET=${CONVEX_TO_N8N_SECRET}
+      - N8N_TO_CONVEX_SECRET=${N8N_TO_CONVEX_SECRET}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+volumes:
+  n8n_data:
