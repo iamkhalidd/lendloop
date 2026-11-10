@@ -4,6 +4,8 @@ A tool-lending app for a neighbourhood: people list tools, neighbours request to
 
 **Stack:** Next.js 16 (App Router), Convex, Clerk, n8n, Tailwind.
 
+**Live:** https://lendloop-ruby.vercel.app (Vercel + Convex cloud; Clerk in development mode; n8n not hosted, so notifications are recorded as "not configured").
+
 ## What's in it
 
 | Area | Where |
@@ -32,7 +34,17 @@ npm install
 
 1. Create an application at dashboard.clerk.com.
 2. Copy the publishable key and secret key into `.env.local` (see `.env.example`).
-3. Open **Integrations → Convex** and enable it. This creates the `convex` JWT template. Copy the **Frontend API URL**; it is the issuer domain.
+3. Open **Integrations → Convex** and enable it. This adds `"aud": "convex"` to the session token. Copy the **Frontend API URL** (API keys page); it is the issuer domain.
+4. Open **Sessions → Customize session token** and set the claims to the JSON below, so Convex receives the user's email and name. Without these, members are stored as "Member" with no email and notifications can't be addressed.
+
+   ```json
+   {
+     "aud": "convex",
+     "email": "{{user.primary_email_address}}",
+     "name": "{{user.full_name}}",
+     "given_name": "{{user.first_name}}"
+   }
+   ```
 
 ### 3. Convex
 
@@ -179,7 +191,7 @@ npm test
   - node parameter shapes
   - the error-workflow link between workflows
   - the import itself
-- **Not verified:** the Clerk sign-in flow in a browser, end to end against a live Clerk app. That needs real keys.
+- **Verified on the live deployment:** Clerk sign-in, user creation in Convex, the role being set by CLI only, and the admin page loading for the admin.
 
 ## Production notes
 
