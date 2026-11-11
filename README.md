@@ -4,7 +4,7 @@ A tool-lending app for a neighbourhood: people list tools, neighbours request to
 
 **Stack:** Next.js 16 (App Router), Convex, Clerk, n8n, Tailwind.
 
-**Live:** https://lendloop-ruby.vercel.app (Vercel + Convex cloud; Clerk in development mode; n8n not hosted, so notifications are recorded as "not configured").
+**Live:** https://lendloop-ruby.vercel.app (Vercel + Convex cloud; Clerk in development mode; n8n on Render with Postgres on Neon).
 
 ## What's in it
 
@@ -86,6 +86,16 @@ docker compose exec n8n n8n import:workflow --separate --input=/workflows
 Open http://localhost:5678 and activate the three workflows. A Convex cloud deployment can't reach `localhost`, so for notifications either point `N8N_NOTIFY_WEBHOOK_URL` at a tunnel (ngrok, cloudflared) or use a hosted n8n.
 
 The Code nodes need `NODE_FUNCTION_ALLOW_BUILTIN=crypto` and `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. `docker-compose.yml` sets both.
+
+#### Hosted n8n (how the live demo runs)
+
+`n8n/Dockerfile` builds n8n with the three workflows baked in. On every start, `n8n/start.sh` imports them and activates the notify and overdue workflows. The error handler stays inactive, because n8n runs it through each workflow's error setting instead.
+
+- **Host:** a Render web service built from `n8n/Dockerfile`.
+- **Database:** Postgres on Neon (`DB_TYPE=postgresdb`, `DB_POSTGRESDB_*`, SSL on), so state survives restarts.
+- **Env:** the Code-node settings above, plus `CONVEX_SITE_URL`, both secrets, `N8N_ENCRYPTION_KEY`, `WEBHOOK_URL`, `N8N_HOST`, `N8N_PROTOCOL=https`, `N8N_PORT=5678` and `N8N_PROXY_HOPS=1`.
+- **Convex:** point `N8N_NOTIFY_WEBHOOK_URL` at `https://<render-host>/webhook/lendloop-notify`.
+- **Free plan:** Render's free plan sleeps after 15 idle minutes. A notification that arrives while n8n is asleep is covered by Convex's retries, but the 08:00 cron only fires if something keeps the service awake (an external pinger, or a paid instance).
 
 ## Architecture
 
@@ -187,11 +197,13 @@ npm test
   - `npm test` passes: 19 tests.
   - `tsc --noEmit` and `eslint` are clean.
   - `next build` succeeds.
-- **Not verified:** the n8n workflows haven't been imported into a running n8n instance; Docker wasn't available on the machine this was built on. Their node logic is tested as described above, but these are unchecked:
-  - node parameter shapes
-  - the error-workflow link between workflows
-  - the import itself
-- **Verified on the live deployment:** Clerk sign-in, user creation in Convex, the role being set by CLI only, and the admin page loading for the admin.
+- **Verified on the live deployment:**
+  - Clerk sign-in, user creation in Convex, the role being set by CLI only, and the admin page loading for the admin.
+  - The workflows import and activate on hosted n8n.
+  - The notify webhook rejects unsigned calls with a 401.
+  - A real request from a second account went Convex → n8n → Convex. Convex recorded a single `notification_sent:<requestId>:request.created` row, with no personal data in the write-back.
+  - The error workflow reported an n8n failure back to Convex as a signed `workflow_error` row.
+- **Not yet verified live:** the 08:00 overdue-reminder run (it needs an overdue loan, and n8n awake at 08:00 UTC).
 
 ## Production notes
 
